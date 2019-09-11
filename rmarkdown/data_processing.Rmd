@@ -1,0 +1,159 @@
+---
+title: "Scraping Hackernews Data"
+author: Szymon Lipiński
+output:
+  html_document:
+    df_print: paged
+    highlight: pygments
+    css: css.css
+  pdf_document: default
+---
+## Downloading The Data
+
+The data is downloaded to a set of csv file using the code available at https://github.com/szymonlipinski/hackernews_dowloader.
+
+This made the following files:
+
+```{bash}
+du -ah /home/data/hn 
+```
+
+## Creating The Database Structure
+
+All the data is too large to keep it in R in memory for processing on my machine. An alternative is to keep it in a database, I chose PostgreSQL.
+
+
+The table structure for the csv data is:
+
+```{bash echo=FALSE}
+cat ../preprocessing/raw_data.create.sql
+```
+
+All the files have been loaded with:
+
+```{bash echo=FALSE}
+cat ../preprocessing/load_files.sh
+```
+
+The loading time was about 6s per file.
+
+# Basic Data Cleaning
+
+## Removing Duplicates
+
+According to the documentation of the downloader program: 
+
+```
+Some entries in the files are duplicated, which is basically because of the Algolia API limitations. What's more, Hackernews users can edit their entries, so when downloading the data after some time, some entries may be different. Mechanism of loading the data to a processing pipeline should update the entries when will have a duplicated entry id.
+```
+
+To remove the duplicates, I used a simple query which should create a new table without the duplicated rows. The primary key for the data is the `object_id` column, so to make things faster, I created an index, and used `distinct on`:
+
+```{bash echo=FALSE}
+cat ../preprocessing/clean_duplicates.sql
+```
+
+## Adding Indices
+
+I also need some indices on the data table for faster searching. I omitted the text columns, except for the ones where I will use the whole text to search, like `type = 'comment'`.
+
+```{bash echo=FALSE}
+cat ../preprocessing/indices.sql
+```
+
+## Preprocessing Data
+
+In the further data processing, I will need to repeat some data operations. To speed it up, I will calculate a couple of things and store it in the database. I like to use materialized views for this for two reasons:
+
+1. They can be easily refreshed to recalculate the data again.
+2. They don't change the original data.
+
+### Calculating The Dates
+
+The only date field in the data table is the `created_at_i` which is an integer with number of seconds since the Jan 1st, 1970. As I will need to aggregate dates by weeks, days of week, months, years, to decrease the query time later, I will calculate it now:
+
+```{bash echo=FALSE}
+cat ../preprocessing/dates.view.sql
+```
+
+For faster searching, I will add some indices on the above view:
+
+```{bash echo=FALSE}
+cat ../preprocessing/dates.view.indices.sql
+```
+
+## Getting URLs
+
+I will also get all the urls from the specific fields. For now I will mark the source of the url, as it is possible that the urls distribution in stories text is different than in comments.
+
+```{bash echo=FALSE}
+cat ../preprocessing/urls.view.sql
+```
+
+For faster searching, I will add some indices on the above view:
+
+```{bash echo=FALSE}
+cat ../preprocessing/urls.view.indices.sql
+```
+
+# Database Size
+
+The main table size with all indices:
+
+```{r message=TRUE}
+require("RPostgreSQL")
+drv <- dbDriver("PostgreSQL")
+con <- dbConnect(drv, dbname = "hn",
+                 host = "localhost", port = 5432,
+                 user = "hn", password = "hn")
+
+tables <- dbGetQuery(con, '
+  SELECT
+    tablename "Table Name",
+    pg_size_pretty(pg_relation_size(tablename::text)) "Size"
+  FROM
+    pg_tables where schemaname=\'public\'
+  ORDER BY
+    tablename
+  ')
+
+views <- dbGetQuery(con, '
+  SELECT 
+    matviewname "View Name",
+    pg_size_pretty(pg_relation_size(matviewname::text)) "Size"
+  FROM
+    pg_matviews where schemaname=\'public\'
+  ORDER BY
+    matviewname
+  ')
+
+indices <- dbGetQuery(con, '
+  SELECT
+    tablename "Table Name",
+    indexname "Index Name",
+    pg_size_pretty(pg_relation_size(indexname::text)) "Size"
+  FROM
+    pg_indexes
+  WHERE schemaname = \'public\'
+  ORDER BY tablename, indexname;
+  ')
+
+```
+
+## Tables
+
+```{r echo=FALSE, paged.print=FALSE}
+tables
+```
+
+## Materialized Views
+
+```{r echo=FALSE, paged.print=FALSE}
+views
+```
+
+## Indices
+
+```{r echo=FALSE, paged.print=FALSE}
+indices
+```

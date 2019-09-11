@@ -1,0 +1,392 @@
+---
+title: "Hacker News Links Analysis"
+author: Szymon Lipiński
+output:
+  html_document:
+    df_print: paged
+    highlight: pygments
+    css: css.css
+  pdf_document: default
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+showAll <- FALSE
+
+library(ggplot2)
+library(RPostgreSQL)
+
+library(ggthemr)
+
+dust = define_palette(
+  background = '#FAF7F2', 
+  #text = c(inner = '#5b4f41', outer = '#5b4f41'), 
+  #line = c(inner = '#8d7a64', outer = '#8d7a64'),
+  gridline = '#E3DDCC',
+  swatch = c(
+    '#555555',
+    '#db735c', '#EFA86E', 
+    '#9A8A76', '#F3C57B', 
+    '#7A6752', '#2A91A2',
+    '#87F28A', '#6EDCEF',
+    '#e6efb6', '#386bd8'
+  ),
+  gradient = c(low = '#F3C57B', high = '#386bd8')
+)
+ggthemr(dust, type="outer", layout="scientific", spacing=2)
+```
+
+```{r data_processing, child = "data_processing.Rmd", echo=showAll, eval=showAll}
+```
+
+# Protocol Distribution
+
+The URLs are gathered regardless the field type, we count one URL per object_id. So, if the same URL appears in the same entry in the title and the description, then it's counted as one. However, if it's in a story and in a comment to this story, then they are counted as two separate URLs.
+
+```{r message=showAll, warning=showAll, echo=showAll}
+
+drv <- dbDriver("PostgreSQL")
+con <- dbConnect(drv, dbname = "hn",
+                 host = "localhost", port = 5432,
+                 user = "hn", password = "hn")
+
+```
+
+
+```{r message=showAll, warning=showAll, echo=showAll, cache=TRUE}
+
+urls <- dbGetQuery(con, "
+  WITH distinct_urls AS (
+    SELECT DISTINCT object_id, protocol, url
+    FROM urls
+    UNION
+    SELECT DISTINCT object_id, 'all',
+           domain || '/' || path as url
+    FROM urls
+  )
+  SELECT protocol, year_month date, count(*)
+  FROM distinct_urls
+  JOIN dates USING (object_id)
+  WHERE date < date_trunc('month', now())
+  GROUP BY protocol, year_month
+  ORDER BY year_month desc, protocol
+")
+
+```
+
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
+dateRange <- dbGetQuery(con, "SELECT min(year) min, max(year) max FROM dates")
+breaks <- mapply({function(year) sprintf("%s-01", year)},
+                 seq(dateRange$min[1], dateRange$max[1]))
+
+gg <- ggplot(data = urls, aes(x = date, y = count, group = protocol)) +
+  geom_point(aes(color = protocol)) +
+  geom_smooth(method = "loess", se = FALSE, aes(color = protocol)) +  
+  labs(title = "Protocol Distribution For URLs By Month",
+       x = "Date",
+       y = "Count",
+       color = "Protocol Type") +
+  scale_x_discrete(breaks = breaks) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1)) 
+
+plot(gg)
+
+```
+
+The number of the https links started growing very fast in 2011. In the middle of 2014 the number of http links started decreasing. What's more interesting, the http links haven't disappeared, yet.
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
+entries <- dbGetQuery(con, "
+  WITH all_entries as (
+      SELECT year_month date, data.type, count(data.object_id)
+      FROM data
+      JOIN dates USING(object_id) 
+      WHERE data.type in ('story', 'comment')
+        AND date < date_trunc('month', now())
+      GROUP BY year_month, data.type
+  ),
+  entries_with_comments as (
+      SELECT year_month date, data.type, count(data.object_id)
+      FROM data
+      JOIN urls USING(object_id) 
+      JOIN dates USING(object_id) 
+      WHERE data.type in ('story', 'comment')
+        AND date < date_trunc('month', now())
+      GROUP BY year_month, data.type
+  )
+  SELECT e.date, e.type, e.count allCount, c.count commentsCount, 
+         100.0 * c.count / e.count percent
+  FROM all_entries e
+  JOIN entries_with_comments c USING (date, type)
+  ORDER BY e.date, e.type
+")
+
+gg <- ggplot(data = entries, aes(x = date, y = allcount, group = type)) +
+  geom_point(aes(color = type)) +
+  geom_smooth(method = "loess", se = FALSE, aes(color = type)) +  
+  labs(title = "Number of Entries By Month",
+       x = "Date",
+       y = "Count",
+       color = "Entry Type") +
+  scale_x_discrete(breaks = breaks) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+plot(gg)
+
+```
+
+The number of comments for a month is growing almost lineary, while the number of stories is almost the same for the last couple of years.
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
+gg <- ggplot(data = entries, aes(x = date, y = commentscount, group = type)) +
+  geom_point(aes(color = type)) +
+  geom_smooth(method = "loess", se = FALSE, aes(color = type)) +  
+  labs(title = "Entries With URLs By Month",
+       x = "Date",
+       y = "Count",
+       color = "Entry Type") +
+  scale_x_discrete(breaks = breaks) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+plot(gg)
+```
+
+The number of stories and the number of comments with links is also growing, which can be caused by the growth of the entries.
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
+gg <- ggplot(data = entries, aes(x = date, y = percent, group = type)) +
+  geom_point(aes(color = type)) +
+  geom_smooth(method = "loess", se = FALSE, aes(color = type)) +  
+  labs(title = "Percentage of Entries With URLs By Month",
+       x = "Date",
+       y = "Count",
+       color = "Entry Type") +
+  scale_x_discrete(breaks = breaks) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+plot(gg)
+
+```
+
+Almost every story has a link and less than 25% of the comments.
+
+The percentage of the stories and the coments with links is almost the same. It looks like the growth of the entries with links, shown on the previous charts, is caused by overall growth of the number of entries.
+
+# The Most Active Domains
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
+mostActiveDomains <- dbGetQuery(con, "
+  WITH domains AS (
+      SELECT domain_without_www, count(*)
+      FROM urls
+      GROUP BY domain_without_www
+      ORDER BY count DESC
+      LIMIT 10
+  )
+  SELECT domain_without_www as domain, year_month date, count(*)
+  FROM urls
+  JOIN dates USING (object_id)
+  WHERE date < date_trunc('month', now())
+    AND domain in (SELECT domain_without_www FROM domains)
+  GROUP BY domain_without_www, year_month
+  ORDER BY domain_without_www, year_month
+  ;
+")
+
+domainsWithMostPoints <- dbGetQuery(con, "
+  WITH domains AS (
+      SELECT domain_without_www, sum(coalesce(points, 0)) points
+      FROM urls
+      JOIN data USING (object_id)
+      GROUP BY domain_without_www
+      ORDER BY points DESC
+      LIMIT 10
+  )
+  SELECT domain_without_www as domain, year_month date, sum(coalesce(points, 0)) points
+  FROM urls
+  JOIN data USING (object_id)
+  JOIN dates USING (object_id)
+  WHERE date < date_trunc('month', now())
+    AND domain in (SELECT domain_without_www FROM domains)
+  GROUP BY domain_without_www, year_month
+  ORDER BY domain_without_www, year_month
+;
+")
+```
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
+
+gg <- ggplot(data = mostActiveDomains, aes(x = date, y = count, group = domain)) +
+  geom_line(aes(color = domain)) +
+  labs(title = "Most Mentioned Domains By Month",
+       x = "Date",
+       y = "Count",
+       color = "Domain") +
+  scale_x_discrete(breaks = breaks) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+plot(gg)
+```
+
+The most mentioned domains are:
+* github.com
+* medium.com
+* en.wikipedia.com
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
+gg <- ggplot(data = domainsWithMostPoints, aes(x = date, y = points, group = domain)) +
+  geom_line(aes(color = domain)) +
+  labs(title = "Domains With Most Points By Month",
+       x = "Date",
+       y = "Points",
+       color = "Domain") +
+  scale_x_discrete(breaks = breaks) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+plot(gg)
+
+```
+
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
+  getDomainData <- function(con, domain) {
+  res <- dbGetQuery(con, "
+    SELECT path, sum(coalesce(points, 0)) point
+    FROM urls
+    JOIN data USING (object_id)
+    WHERE (path IS NOT NULL AND path <> '/')
+      AND domain_without_www = $1
+    GROUP BY path
+    ORDER BY point DESC 
+    LIMIT 20;
+  ", params = c(domain))
+  res$url <- paste(paste("https://", domain, sep=""), res$path, sep="")
+  res
+} 
+```
+
+# XKCD
+
+```{r}
+xkcdMappings <- list(
+  "/standards.png",
+  "/heartbleed_explanation.png",
+  "/machine_learning.png",
+  "/security.png",
+  "/survivorship_bias.png",
+  "/click_and_drag.png",
+  "/password_strength.png",
+  "/ten_thousand.png",
+  "/instagram.png"
+)
+names(xkcdMappings) <- list(
+  "/927", 
+  "/1354",
+  "/1838",
+  "/538",
+  "/1827",
+  "/1110",
+  "/936",
+  "/1053",
+  "/1150"
+)
+
+baseXkcdURL <- "https://imgs.xkcd.com/comics"
+
+xkcd <- getDomainData(con, 'xkcd.com')
+
+xkcd$embeddedUrl <- mapply({function(path) {
+      mappedUrl <- if (!(path %in% names(xkcdMappings))) {
+        path
+      } else {
+        xkcdMappings[path][1]
+      }
+      # This is a special case, as this comic is not stored
+      # at the usual embedded URL
+      if (path == "/radiation") {
+        return("https://imgs.xkcd.com/blag/radiation.png")
+      }
+      paste(baseXkcdURL, mappedUrl, sep="")
+    }
+  }, xkcd$path)
+
+xkcd$html <- sprintf(
+  '<span class="xkcd"><a href="%s" target="<!!>">![](%s)</a><br>%s/ </span>',
+  xkcd$url,
+  xkcd$embeddedUrl,
+  xkcd$url
+)
+```
+
+```{r}
+xkcd
+```
+
+
+```{r}
+print(xkcd$html[1:10])
+```
+
+```{r}
+library(knitr)
+kable(xkcd$html[1:10], col.names=c(''))
+```
+
+
+
+
+# Wikipedia
+
+```{r}
+wikiData <- getDomainData(con, 'en.wikipedia.org')
+print(wikiData$url[1:10])
+```
+
+# Arstechnica
+
+```{r}
+arstechnicaData <- getDomainData(con, 'arstechnica.com')
+print(arstechnicaData$embeddedUrl[1:10])
+```
+
+# Github
+
+```{r}
+getDomainData(con, 'github.com')
+```
+
+# Medium
+
+```{r}
+getDomainData(con, 'medium.com')
+```
+
+# Twitter
+
+```{r}
+getDomainData(con, 'twitter.com')
+```
+
+
+```
+<blockquote class="twitter-tweet">
+  <p lang="en" dir="ltr">Sunsets don&#39;t get much better than this one over 
+    <a href="https://twitter.com/GrandTetonNPS?ref_src=twsrc%5Etfw">@GrandTetonNPS</a>. <a href="https://twitter.com/hashtag/nature?src=hash&amp;ref_src=twsrc%5Etfw">#nature</a> <a href="https://twitter.com/hashtag/sunset?src=hash&amp;ref_src=twsrc%5Etfw">#sunset</a> <a href="http://t.co/YuKy2rcjyU">pic.twitter.com/YuKy2rcjyU</a></p>&mdash; US Department of the Interior (@Interior) <a href="https://twitter.com/Interior/status/463440424141459456?ref_src=twsrc%5Etfw">May 5, 2014</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script> 
+```
+
+# Software Version
+
+* **OS**: *`r system("lsb_release -sd", intern=TRUE)`*
+* **Python**: *`r system('~/envs/data/bin/python -c "import sys; print(sys.version)"', intern=TRUE)`*
+* **PostgreSQL**: *`r dbGetQuery(con, "select version()")[1]$version`*
+* **R**: *`r version`*
+
+
+
+
+
+
+
