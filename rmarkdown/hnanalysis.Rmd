@@ -14,8 +14,11 @@ showAll <- FALSE
 
 library(ggplot2)
 library(RPostgreSQL)
-
+library(knitr)
 library(ggthemr)
+library(dplyr)
+library(httr)
+library(rvest)
 
 dust = define_palette(
   background = '#FAF7F2', 
@@ -177,7 +180,7 @@ The percentage of the stories and the coments with links is almost the same. It 
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
-mostActiveDomains <- dbGetQuery(con, "
+mostActiveDomainsByMonth <- dbGetQuery(con, "
   WITH domains AS (
       SELECT domain_without_www, count(*)
       FROM urls
@@ -195,7 +198,7 @@ mostActiveDomains <- dbGetQuery(con, "
   ;
 ")
 
-domainsWithMostPoints <- dbGetQuery(con, "
+domainsWithMostPointsByMonth <- dbGetQuery(con, "
   WITH domains AS (
       SELECT domain_without_www, sum(coalesce(points, 0)) points
       FROM urls
@@ -214,12 +217,29 @@ domainsWithMostPoints <- dbGetQuery(con, "
   ORDER BY domain_without_www, year_month
 ;
 ")
+
+mostActiveDomains <- dbGetQuery(con, "
+      SELECT domain_without_www, count(*)
+      FROM urls
+      GROUP BY domain_without_www
+      ORDER BY count DESC
+      LIMIT 10
+")
+
+domainsWithMostPoints <- dbGetQuery(con, "
+      SELECT domain_without_www, sum(coalesce(points, 0)) points
+      FROM urls
+      JOIN data USING (object_id)
+      GROUP BY domain_without_www
+      ORDER BY points DESC
+      LIMIT 10
+")
 ```
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
 
-gg <- ggplot(data = mostActiveDomains, aes(x = date, y = count, group = domain)) +
+gg <- ggplot(data = mostActiveDomainsByMonth, aes(x = date, y = count, group = domain)) +
   geom_line(aes(color = domain)) +
   labs(title = "Most Mentioned Domains By Month",
        x = "Date",
@@ -230,14 +250,17 @@ gg <- ggplot(data = mostActiveDomains, aes(x = date, y = count, group = domain))
 plot(gg)
 ```
 
-The most mentioned domains are:
-* github.com
-* medium.com
-* en.wikipedia.com
+The domains with the biggest number of posts are:
+
+* `r mostActiveDomains$domain[1]`
+* `r mostActiveDomains$domain[2]`
+* `r mostActiveDomains$domain[3]`
+* `r mostActiveDomains$domain[4]`
+* `r mostActiveDomains$domain[5]`
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
-gg <- ggplot(data = domainsWithMostPoints, aes(x = date, y = points, group = domain)) +
+gg <- ggplot(data = domainsWithMostPointsByMonth, aes(x = date, y = points, group = domain)) +
   geom_line(aes(color = domain)) +
   labs(title = "Domains With Most Points By Month",
        x = "Date",
@@ -249,10 +272,18 @@ plot(gg)
 
 ```
 
+The domains with the biggest number of points all the time are:
+
+* `r domainsWithMostPoints$domain[1]`
+* `r domainsWithMostPoints$domain[2]`
+* `r domainsWithMostPoints$domain[3]`
+* `r domainsWithMostPoints$domain[4]`
+* `r domainsWithMostPoints$domain[5]`
+
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
-  getDomainData <- function(con, domain) {
+getDomainData <- function(con, domain) {
   res <- dbGetQuery(con, "
     SELECT path, sum(coalesce(points, 0)) point
     FROM urls
@@ -270,7 +301,8 @@ plot(gg)
 
 # XKCD
 
-```{r}
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
 xkcdMappings <- list(
   "/standards.png",
   "/heartbleed_explanation.png",
@@ -309,45 +341,91 @@ xkcd$embeddedUrl <- mapply({function(path) {
       if (path == "/radiation") {
         return("https://imgs.xkcd.com/blag/radiation.png")
       }
-      paste(baseXkcdURL, mappedUrl, sep="")
+      paste(baseXkcdURL, mappedUrl, sep = "")
     }
   }, xkcd$path)
+```
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
 xkcd$html <- sprintf(
-  '<span class="xkcd"><a href="%s" target="<!!>">![](%s)</a><br>%s/ </span>',
+  '<span class="list-item"> <span class="image"> <a href="%s" target="<!!>">![](%s)</a> <span class="link"> %s/ </span> </span> </span>',
   xkcd$url,
   xkcd$embeddedUrl,
   xkcd$url
 )
 ```
 
-```{r}
+```{r echo=showAll, message=showAll, warning=showAll, eval=showAll, cache=TRUE}
 xkcd
 ```
 
+**The Xkcd comics with the bigger number of points all the time.**
 
-```{r}
-print(xkcd$html[1:10])
-```
-
-```{r}
-library(knitr)
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 kable(xkcd$html[1:10], col.names=c(''))
 ```
 
-
-
-
 # Wikipedia
 
-```{r}
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+
 wikiData <- getDomainData(con, 'en.wikipedia.org')
-print(wikiData$url[1:10])
+
+# I need to remove some of the links, as they are not interested for the analysis
+# /w/index.php - it's the main wikipedia page
+wikiData <- wikiData %>%
+  filter(!(path %in% c("/w/index.php")))
+
+wikiData <- wikiData[1:10, ]
+
+# download the html pages from the wikipedia for the urls
+wikiData$page <- mapply({function(url) url %>% GET() %>% content("text")}, wikiData$url)
+
+# parse the html to get the article title
+wikiData$title <- mapply({function(html) read_html(html) %>% html_nodes("#firstHeading") %>% html_text()}, wikiData$page)
+
+# parse the html to get the article first paragraph
+wikiData$firstParagraph <- mapply({function(html) {
+    x <- read_html(html) %>%
+      html_nodes("#mw-content-text .mw-parser-output p")
+    
+    x <- Filter({function (t) html_text(t) != "\n"}, x)[1]
+    html_text(x)
+  }
+}, wikiData$page)
+
+data <- sprintf(
+  '<p class="list-item"> <span class="title"> <a href="%s" target="<!!>">%s</a> </span> <span class="first-paragraph"> %s </span> <span class="link"> <a href="%s" target="<!!>">%s</a> </span> </p>',
+  wikiData$url,
+  wikiData$title,
+  wikiData$firstParagraph,
+  wikiData$url,
+  wikiData$url
+)
+
 ```
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+# I haven't found simpler way to list the content to markdown (sometimes kable doesn't work well):
+```
+
+**Top 10 Wikipedia articles with the most points**
+
+`r data[1]`
+`r data[2]`
+`r data[3]`
+`r data[4]`
+`r data[5]`
+`r data[6]`
+`r data[7]`
+`r data[8]`
+`r data[9]`
+`r data[10]`
 
 # Arstechnica
 
-```{r}
+```{r echo=showAll, message=showAll, warning=showAll, eval=showAll, cache=F}
 arstechnicaData <- getDomainData(con, 'arstechnica.com')
 print(arstechnicaData$embeddedUrl[1:10])
 ```

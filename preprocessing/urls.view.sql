@@ -10,7 +10,7 @@ with url_data as
         distinct
         object_id, 'comment_text' as type,
         unnest(
-            regexp_matches(lower(comment_text), '((?:http|https)://[a-zA-Z0-9][a-zA-Z0-9\.-]*\.[a-zA-Z]{2,}/?[^\s<"]*)',  'g')
+            regexp_matches(comment_text, '((?:http|https)://[a-zA-Z0-9][a-zA-Z0-9\.-]*\.[a-zA-Z]{2,}/?[^\s<"]*)',  'gi')
         ) url
     from data
     UNION ALL
@@ -18,7 +18,7 @@ with url_data as
         distinct
         object_id, 'story_title',
         unnest(
-            regexp_matches(lower(title), '((?:http|https)://[a-zA-Z0-9][a-zA-Z0-9\.-]*\.[a-zA-Z]{2,}/?[^\s<"]*)',  'g')
+            regexp_matches(title, '((?:http|https)://[a-zA-Z0-9][a-zA-Z0-9\.-]*\.[a-zA-Z]{2,}/?[^\s<"]*)',  'gi')
         ) url
     from data
     UNION ALL
@@ -26,7 +26,7 @@ with url_data as
         distinct
         object_id, 'story_text',
         unnest(
-            regexp_matches(lower(story_text), '((?:http|https)://[a-zA-Z0-9][a-zA-Z0-9\.-]*\.[a-zA-Z]{2,}/?[^\s<"]*)',  'g')
+            regexp_matches(story_text, '((?:http|https)://[a-zA-Z0-9][a-zA-Z0-9\.-]*\.[a-zA-Z]{2,}/?[^\s<"]*)',  'gi')
         ) url
     from data
     UNION ALL
@@ -34,21 +34,28 @@ with url_data as
         distinct
         object_id, 'url',
         unnest(
-            regexp_matches(lower(url), '((?:http|https)://[a-zA-Z0-9][a-zA-Z0-9\.-]*\.[a-zA-Z]{2,}/?[^\s<"]*)',  'g')
+            regexp_matches(url, '((?:http|https)://[a-zA-Z0-9][a-zA-Z0-9\.-]*\.[a-zA-Z]{2,}/?[^\s<"]*)',  'gi')
         ) url
     from data
 ),
 clean_urls as (
-     SELECT DISTINCT object_id, type, rtrim(url, './') as url
+     SELECT DISTINCT 
+        object_id, 
+        type, 
+        case when rtrim(url, './') ilike '%(%)%' 
+             then rtrim(url, './') 
+             else rtrim(url, './)')
+        end as url
      FROM url_data
      WHERE url not like '%...'
 ),
 parts as (
  SELECT 
-    object_id, type, rtrim(url, './') as url,
-    (regexp_matches(url, '^(\w*)://[^/]*/?.*/?$')::TEXT[])[1] as protocol,
-    (regexp_matches(url, '^\w*://([^/]*)/?.*/?$')::TEXT[])[1] as domain,
-    (regexp_matches(url, '^\w*://(?:www.)?([a-zA-Z0-9_\.-]*).*$')::TEXT[])[1] as domain_without_www,
+    object_id, type, url,
+
+    (regexp_matches(lower(url), '^(\w*)://[^/]*/?.*/?$')::TEXT[])[1] as protocol,
+    (regexp_matches(lower(url), '^\w*://([^/]*)/?.*/?$')::TEXT[])[1] as domain,
+    (regexp_matches(lower(url), '^\w*://(?:www.)?([a-zA-Z0-9_\.-]*).*$')::TEXT[])[1] as domain_without_www,
     (regexp_matches(url, '^\w*://[^/]*(/.*)/?$')::TEXT[])[1] as full_path,
     (regexp_matches(url, '^\w*://[^/]*/.*/?\?(.*)/?$')::TEXT[])[1] as params,
     (regexp_matches(url, '^\w*://[^/]*(/[^?#]*?)/?')::TEXT[])[1] as path

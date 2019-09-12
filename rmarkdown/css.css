@@ -1,7 +1,31 @@
-.xkcd {
+.list-item {
     border: 2px solid gray;
     display: block;
     margin-top: 18px;
     margin-bottom: 20px;
     padding: 30px;
 }
+
+.xkcd .image {
+    display: block;
+}
+
+.list-item .link {
+    display: block;
+    margin-top: 20px;
+    font-weight: 600;
+    font-size: 120%;
+    margin-left: 30px;
+}
+
+.first-paragraph {
+    display: block;
+    margin-top: 20px;
+}
+
+.list-item .title {
+    display: block;
+    font-weight: bold;
+    font-size: 150%;
+}
+
