@@ -6,6 +6,8 @@ output:
     df_print: paged
     highlight: pygments
     css: css.css
+    toc: true
+    toc_depth: 2
   pdf_document: default
 ---
 
@@ -19,6 +21,7 @@ library(ggthemr)
 library(dplyr)
 library(httr)
 library(rvest)
+library(jsonlite)
 
 dust = define_palette(
   background = '#FAF7F2', 
@@ -164,7 +167,7 @@ gg <- ggplot(data = entries, aes(x = date, y = percent, group = type)) +
   geom_smooth(method = "loess", se = FALSE, aes(color = type)) +  
   labs(title = "Percentage of Entries With URLs By Month",
        x = "Date",
-       y = "Count",
+       y = "Percent",
        color = "Entry Type") +
   scale_x_discrete(breaks = breaks) + 
   theme(axis.text.x = element_text(angle = 30, hjust = 1))
@@ -238,7 +241,6 @@ domainsWithMostPoints <- dbGetQuery(con, "
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
-
 gg <- ggplot(data = mostActiveDomainsByMonth, aes(x = date, y = count, group = domain)) +
   geom_line(aes(color = domain)) +
   labs(title = "Most Mentioned Domains By Month",
@@ -281,7 +283,7 @@ The domains with the biggest number of points all the time are:
 * `r domainsWithMostPoints$domain[5]`
 
 
-```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+```{r echo=showAll, message=showAll, warning=showAll, cache=FALSE}
 
 getDomainData <- function(con, domain) {
   res <- dbGetQuery(con, "
@@ -299,7 +301,7 @@ getDomainData <- function(con, domain) {
 } 
 ```
 
-# XKCD
+# XKCD :: Comics with The Biggest Number of Points
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
@@ -360,13 +362,12 @@ xkcd$html <- sprintf(
 xkcd
 ```
 
-**The Xkcd comics with the bigger number of points all the time.**
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 kable(xkcd$html[1:10], col.names=c(''))
 ```
 
-# Wikipedia
+# Wikipedia :: Pages with The Biggest Number of Points
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
@@ -410,7 +411,48 @@ data <- sprintf(
 # I haven't found simpler way to list the content to markdown (sometimes kable doesn't work well):
 ```
 
-**Top 10 Wikipedia articles with the most points**
+`r data[1]`
+`r data[2]`
+`r data[3]`
+`r data[4]`
+`r data[5]`
+`r data[6]`
+`r data[7]`
+`r data[8]`
+`r data[9]`
+`r data[10]`
+
+# Arstechnica :: Pages with The Biggest Number of Points
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=F}
+# Get the links
+arstechnicaData <- getDomainData(con, 'arstechnica.com')
+arstechnicaData <- arstechnicaData[1:10, ]
+
+# Download the pages
+arstechnicaData$page <- mapply({function(url) url %>% GET() %>% content("text")}, arstechnicaData$url)
+
+# parse the html to get the article title
+arstechnicaData$title <- mapply({function(html) read_html(html) %>% html_nodes("h1") %>% html_text()}, arstechnicaData$page)
+
+# parse the html to get the article first paragraph
+arstechnicaData$firstParagraph <- mapply({function(html) {
+    x <- read_html(html) %>%
+      html_nodes(".article-content p")
+
+    html_text(x[1])
+  }
+}, arstechnicaData$page)
+
+data <- sprintf(
+  '<p class="list-item"> <span class="title"> <a href="%s" target="<!!>">%s</a> </span> <span class="first-paragraph"> %s </span> <span class="link"> <a href="%s" target="<!!>">%s</a> </span> </p>',
+  arstechnicaData$url,
+  arstechnicaData$title,
+  arstechnicaData$firstParagraph,
+  arstechnicaData$url,
+  arstechnicaData$url
+)
+```
 
 `r data[1]`
 `r data[2]`
@@ -423,46 +465,85 @@ data <- sprintf(
 `r data[9]`
 `r data[10]`
 
-# Arstechnica
+# Github :: Pages with The Biggest Number of Points
 
-```{r echo=showAll, message=showAll, warning=showAll, eval=showAll, cache=F}
-arstechnicaData <- getDomainData(con, 'arstechnica.com')
-print(arstechnicaData$embeddedUrl[1:10])
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+githubData <- getDomainData(con, 'github.com')
+
+githubData <- githubData %>%
+  filter(!(path %in% c("/search", "/sponsors")))
+
+githubData <- githubData[1:10, ]
+
+data <- sprintf(
+  '<p class="list-item"> <span class="link"> <a href="%s" target="<!!>">%s</a> </span> </p>',
+  githubData$url,
+  githubData$url
+)
 ```
 
-# Github
+`r data[1]`
+`r data[2]`
+`r data[3]`
+`r data[4]`
+`r data[5]`
+`r data[6]`
+`r data[7]`
+`r data[8]`
+`r data[9]`
+`r data[10]`
 
-```{r}
-getDomainData(con, 'github.com')
+# Twitter :: Twits and Accounts with The Biggest Number of Points
+
+```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
+twitterData <- getDomainData(con, 'twitter.com')
+
+twitterData <- twitterData %>%
+  filter(!(path %in% c("/search")))
+
+twitterData <- twitterData[1:10, ]
+
+twitterData$html <- mapply({function(url) {
+      url <- paste("https://publish.twitter.com/oembed?url=", url ,sep = "")
+      url %>%
+        GET() %>% 
+        content(as = "text") %>% 
+        fromJSON() %>%
+        .$html
+    }
+  },
+  twitterData$url)
+
+data <- sprintf(
+  '<div class="list-item"> %s <span class="link"> <a href="%s" target="<!!>">%s</a> </span> </div>',
+  twitterData$html,
+  twitterData$url,
+  twitterData$url
+)
 ```
 
-# Medium
 
-```{r}
-getDomainData(con, 'medium.com')
+`r data[1]`
+`r data[2]`
+`r data[3]`
+`r data[4]`
+`r data[5]`
+`r data[6]`
+`r data[7]`
+`r data[8]`
+`r data[9]`
+`r data[10]`
+
+```{r data_processing, child = "software_versions.Rmd", echo=showAll, eval=showAll}
 ```
 
-# Twitter
+# About Author
 
-```{r}
-getDomainData(con, 'twitter.com')
-```
+Made by Szymon Lipiński.
 
+Published at https://www.simononsoftware.com/
 
-```
-<blockquote class="twitter-tweet">
-  <p lang="en" dir="ltr">Sunsets don&#39;t get much better than this one over 
-    <a href="https://twitter.com/GrandTetonNPS?ref_src=twsrc%5Etfw">@GrandTetonNPS</a>. <a href="https://twitter.com/hashtag/nature?src=hash&amp;ref_src=twsrc%5Etfw">#nature</a> <a href="https://twitter.com/hashtag/sunset?src=hash&amp;ref_src=twsrc%5Etfw">#sunset</a> <a href="http://t.co/YuKy2rcjyU">pic.twitter.com/YuKy2rcjyU</a></p>&mdash; US Department of the Interior (@Interior) <a href="https://twitter.com/Interior/status/463440424141459456?ref_src=twsrc%5Etfw">May 5, 2014</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script> 
-```
-
-# Software Version
-
-* **OS**: *`r system("lsb_release -sd", intern=TRUE)`*
-* **Python**: *`r system('~/envs/data/bin/python -c "import sys; print(sys.version)"', intern=TRUE)`*
-* **PostgreSQL**: *`r dbGetQuery(con, "select version()")[1]$version`*
-* **R**: *`r version`*
-
-
+You can contact me e.g. at https://twitter.com/szymon_lipinski
 
 
 

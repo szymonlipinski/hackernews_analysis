@@ -1,0 +1,16 @@
+---
+title: "Software Versions"
+author: Szymon Lipiński
+output:
+  html_document:
+    df_print: paged
+    highlight: pygments
+    css: css.css
+  pdf_document: default
+---
+# Software Version
+
+* **OS**: *`r system("lsb_release -sd", intern=TRUE)`*
+* **Python**: *`r system('~/envs/data/bin/python -c "import sys; print(sys.version)"', intern=TRUE)`*
+* **PostgreSQL**: *`r dbGetQuery(con, "select version()")[1]$version`*
+* **R**: *`r version`*
