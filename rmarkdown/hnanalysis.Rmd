@@ -543,6 +543,12 @@ Made by Szymon Lipiński.
 
 Published at https://www.simononsoftware.com/
 
+The full project is available at https://github.com/szymonlipinski/hackernews_analysis
+
+The simple report is available at: http://www.simononsoftware.com/hnanalysis.html.
+
+The version with all the code samples used to process the data and generate the output is at: http://www.simononsoftware.com/hnanalysis-full.html.
+
 You can contact me e.g. at https://twitter.com/szymon_lipinski
 
 
