@@ -495,6 +495,8 @@ data <- sprintf(
 
 # Twitter :: Twits and Accounts with The Biggest Number of Points
 
+*Sometimes adblocks don't display the twitter cards, then you will see just the links*
+
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 twitterData <- getDomainData(con, 'twitter.com')
 
@@ -541,17 +543,7 @@ data <- sprintf(
 
 Made by Szymon Lipiński.
 
-Published at https://www.simononsoftware.com/
-
-The full project is available at https://github.com/szymonlipinski/hackernews_analysis
-
-The simple report is available at: http://www.simononsoftware.com/hnanalysis.html.
-
-The version with all the code samples used to process the data and generate the output is at: http://www.simononsoftware.com/hnanalysis-full.html.
+Published at https://www.simononsoftware.com/hackernews-links-analysis/
 
 You can contact me e.g. at https://twitter.com/szymon_lipinski
-
-
-
-
 
