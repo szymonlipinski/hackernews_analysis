@@ -46,7 +46,7 @@ ggthemr(dust, type="outer", layout="scientific", spacing=2)
 
 # Protocol Distribution
 
-The URLs are gathered regardless the field type, we count one URL per object_id. So, if the same URL appears in the same entry in the title and the description, then it's counted as one. However, if it's in a story and in a comment to this story, then they are counted as two separate URLs.
+The URLs are gathered regardless of the field type, we count one URL per object_id. So, if the same URL appears in the same entry in the title and the description, then it's counted as one. However, if it's in a story and in a comment to this story, then they are counted as two separate URLs.
 
 ```{r message=showAll, warning=showAll, echo=showAll}
 
@@ -100,7 +100,7 @@ plot(gg)
 
 ```
 
-The number of the https links started growing very fast in 2011. In the middle of 2014 the number of http links started decreasing. What's more interesting, the http links haven't disappeared, yet.
+The number of https links started growing very fast in 2011. In the middle of 2013, the number of http links started decreasing. What’s more interesting, the http links haven’t disappeared, yet.
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
@@ -142,7 +142,7 @@ plot(gg)
 
 ```
 
-The number of comments for a month is growing almost lineary, while the number of stories is almost the same for the last couple of years.
+The number of comments for a month is growing almost linearly. The number of stories also grows, but much slower.
 
 ```{r echo=showAll, message=showAll, warning=showAll, cache=TRUE}
 
@@ -177,7 +177,7 @@ plot(gg)
 
 Almost every story has a link and less than 25% of the comments.
 
-The percentage of the stories and the coments with links is almost the same. It looks like the growth of the entries with links, shown on the previous charts, is caused by overall growth of the number of entries.
+The percentage of the stories and the comments with links is almost the same. It looks like the growth of the entries with links, shown in the previous charts, is caused by the overall growth of the number of entries.
 
 # The Most Active Domains
 
@@ -539,11 +539,10 @@ data <- sprintf(
 ```{r data_processing, child = "software_versions.Rmd", echo=showAll, eval=showAll}
 ```
 
-# About Author
+# About The Author
 
 Made by Szymon Lipiński.
 
 Published at https://www.simononsoftware.com/hackernews-links-analysis/
 
-You can contact me e.g. at https://twitter.com/szymon_lipinski
 
